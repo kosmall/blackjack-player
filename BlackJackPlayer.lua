@@ -208,8 +208,8 @@ end
 
 -- Hit button
 local hitBtn = CreateFrame("Button", nil, mainFrame, "UIPanelButtonTemplate")
-hitBtn:SetSize(100, 35)
-hitBtn:SetPoint("BOTTOMLEFT", mainFrame, "BOTTOMLEFT", 30, 25)
+hitBtn:SetSize(80, 35)
+hitBtn:SetPoint("BOTTOMLEFT", mainFrame, "BOTTOMLEFT", 15, 25)
 hitBtn:SetText("HIT")
 hitBtn:SetScript("OnClick", function()
     if gameState.active and gameState.myTurn then
@@ -217,10 +217,34 @@ hitBtn:SetScript("OnClick", function()
     end
 end)
 
+-- Trade button
+local tradeBtn = CreateFrame("Button", nil, mainFrame, "UIPanelButtonTemplate")
+tradeBtn:SetSize(80, 35)
+tradeBtn:SetPoint("BOTTOM", mainFrame, "BOTTOM", 0, 25)
+tradeBtn:SetText("TRADE")
+tradeBtn:SetScript("OnClick", function()
+    if gameState.dealerName then
+        TargetUnit(gameState.dealerName)
+        InitiateTrade("target")
+    end
+end)
+
+-- Function to update trade button state
+local function UpdateTradeButton()
+    if gameState.dealerName then
+        tradeBtn:Enable()
+    else
+        tradeBtn:Disable()
+    end
+end
+
+-- Initialize trade button as disabled
+tradeBtn:Disable()
+
 -- Pass button
 local passBtn = CreateFrame("Button", nil, mainFrame, "UIPanelButtonTemplate")
-passBtn:SetSize(100, 35)
-passBtn:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -30, 25)
+passBtn:SetSize(80, 35)
+passBtn:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -15, 25)
 passBtn:SetText("PASS")
 passBtn:SetScript("OnClick", function()
     if gameState.active and gameState.myTurn then
@@ -331,6 +355,9 @@ function BlackJackPlayer:UpdateDisplay()
     else
         playerValueText:SetText("")
     end
+
+    -- Update trade button state
+    UpdateTradeButton()
 end
 
 -- Parse card name to value
