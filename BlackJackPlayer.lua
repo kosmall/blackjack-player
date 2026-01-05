@@ -2,7 +2,7 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.2.0"
+BlackJackPlayer.version = "1.3.0"
 
 -- Default saved variables
 local defaults = {
@@ -26,10 +26,14 @@ local cardSymbols = {
 local SOUNDS = {
     NEW_CARD = 1184,
     YOUR_TURN = 3175,
-    WIN = 5274,
-    BLACKJACK = 8455,
     LOSE = 847,
     PUSH = 867,
+}
+
+-- Voice announcements
+local VOICE_SOUNDS = {
+    WIN = "Interface\\AddOns\\BlackJackPlayer\\Sounds\\player_wins.mp3",
+    BLACKJACK = "Interface\\AddOns\\BlackJackPlayer\\Sounds\\blackjack.mp3",
 }
 
 -- Game state
@@ -227,14 +231,23 @@ hitBtn:SetScript("OnClick", function()
     end
 end)
 
--- Trade button
-local tradeBtn = CreateFrame("Button", nil, mainFrame, "UIPanelButtonTemplate")
+-- Trade button (uses SecureActionButton to target dealer)
+local tradeBtn = CreateFrame("Button", nil, mainFrame, "SecureActionButtonTemplate, UIPanelButtonTemplate")
 tradeBtn:SetSize(80, 35)
 tradeBtn:SetPoint("BOTTOM", mainFrame, "BOTTOM", 0, 25)
 tradeBtn:SetText("TRADE")
-tradeBtn:SetScript("OnClick", function()
-    if gameState.dealerName then
-        TargetUnit(gameState.dealerName)
+
+-- Update secure button attributes when dealer changes
+local function UpdateTradeButtonTarget()
+    if gameState.dealerName and not InCombatLockdown() then
+        tradeBtn:SetAttribute("type", "macro")
+        tradeBtn:SetAttribute("macrotext", "/target " .. gameState.dealerName .. "\n/run InitiateTrade('target')")
+    end
+end
+
+-- Hook to initiate trade after targeting
+tradeBtn:HookScript("OnClick", function()
+    if gameState.dealerName and UnitName("target") == gameState.dealerName then
         InitiateTrade("target")
     end
 end)
@@ -243,6 +256,7 @@ end)
 local function UpdateTradeButton()
     if gameState.dealerName then
         tradeBtn:Enable()
+        UpdateTradeButtonTarget()
     else
         tradeBtn:Disable()
     end
@@ -511,7 +525,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 gameState.result = "blackjack"
                 gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
                 gameState.phase = "finished"
-                PlaySound(SOUNDS.BLACKJACK)
+                PlaySoundFile(VOICE_SOUNDS.BLACKJACK, "Master")
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -521,7 +535,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 gameState.result = "win"
                 gameState.winAmount = gameState.betAmount * 2
                 gameState.phase = "finished"
-                PlaySound(SOUNDS.WIN)
+                PlaySoundFile(VOICE_SOUNDS.WIN, "Master")
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -532,11 +546,11 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                     if gameState.myValue == 21 and #gameState.myCards == 2 then
                         gameState.result = "blackjack"
                         gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
-                        PlaySound(SOUNDS.BLACKJACK)
+                        PlaySoundFile(VOICE_SOUNDS.BLACKJACK, "Master")
                     else
                         gameState.result = "win"
                         gameState.winAmount = gameState.betAmount * 2
-                        PlaySound(SOUNDS.WIN)
+                        PlaySoundFile(VOICE_SOUNDS.WIN, "Master")
                     end
                     gameState.phase = "finished"
                     BlackJackPlayer:UpdateDisplay()
@@ -571,7 +585,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 if not gameState.result then
                     if gameState.winAmount > gameState.betAmount then
                         gameState.result = "win"
-                        PlaySound(SOUNDS.WIN)
+                        PlaySoundFile(VOICE_SOUNDS.WIN, "Master")
                     else
                         gameState.result = "push"
                         PlaySound(SOUNDS.PUSH)

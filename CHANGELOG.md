@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0] - 2025-01-05
+
+### Added
+- Voice announcements for Win and Blackjack results (MP3 files)
+
+### Fixed
+- Trade button now uses SecureActionButton to avoid protected function errors
+
 ## [1.2.0] - 2025-01-05
 
 ### Added
