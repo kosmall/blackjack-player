@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0] - 2025-01-05
+
+### Added
+- Sound effects for game events:
+  - New card dealt
+  - Your turn notification
+  - Win / Blackjack / Lose / Push results
+
 ## [1.1.0] - 2025-01-05
 
 ### Added

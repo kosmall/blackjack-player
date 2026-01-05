@@ -2,7 +2,7 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.0.0"
+BlackJackPlayer.version = "1.2.0"
 
 -- Default saved variables
 local defaults = {
@@ -20,6 +20,16 @@ local cardSymbols = {
     [1] = "A", [2] = "2", [3] = "3", [4] = "4", [5] = "5",
     [6] = "6", [7] = "7", [8] = "8", [9] = "9", [10] = "10",
     [11] = "J", [12] = "Q", [13] = "K",
+}
+
+-- Sound effects
+local SOUNDS = {
+    NEW_CARD = 1184,
+    YOUR_TURN = 3175,
+    WIN = 5274,
+    BLACKJACK = 8455,
+    LOSE = 847,
+    PUSH = 867,
 }
 
 -- Game state
@@ -427,11 +437,13 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                         -- My card
                         table.insert(gameState.myCards, cardValue)
                         gameState.myValue = CalculateHandValue(gameState.myCards)
+                        PlaySound(SOUNDS.NEW_CARD)
                         BlackJackPlayer:UpdateDisplay()
                     elseif drawPlayer == "Dealer" then
                         -- Dealer's card
                         table.insert(gameState.dealerCards, cardValue)
                         gameState.dealerValue = CalculateHandValue(gameState.dealerCards)
+                        PlaySound(SOUNDS.NEW_CARD)
                         BlackJackPlayer:UpdateDisplay()
                     end
                 end
@@ -443,6 +455,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             if turnPlayer and turnPlayer == playerName then
                 gameState.phase = "playerTurn"
                 gameState.myTurn = true
+                PlaySound(SOUNDS.YOUR_TURN)
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -488,6 +501,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 gameState.result = "bust"
                 gameState.phase = "finished"
                 gameState.myTurn = false
+                PlaySound(SOUNDS.LOSE)
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -497,6 +511,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 gameState.result = "blackjack"
                 gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
                 gameState.phase = "finished"
+                PlaySound(SOUNDS.BLACKJACK)
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -506,6 +521,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 gameState.result = "win"
                 gameState.winAmount = gameState.betAmount * 2
                 gameState.phase = "finished"
+                PlaySound(SOUNDS.WIN)
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -516,9 +532,11 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                     if gameState.myValue == 21 and #gameState.myCards == 2 then
                         gameState.result = "blackjack"
                         gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
+                        PlaySound(SOUNDS.BLACKJACK)
                     else
                         gameState.result = "win"
                         gameState.winAmount = gameState.betAmount * 2
+                        PlaySound(SOUNDS.WIN)
                     end
                     gameState.phase = "finished"
                     BlackJackPlayer:UpdateDisplay()
@@ -530,6 +548,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             if string.find(msg, "Push") and string.find(msg, playerName) then
                 gameState.result = "push"
                 gameState.phase = "finished"
+                PlaySound(SOUNDS.PUSH)
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -539,6 +558,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 if gameState.active and not gameState.result then
                     gameState.result = "lose"
                     gameState.phase = "finished"
+                    PlaySound(SOUNDS.LOSE)
                     BlackJackPlayer:UpdateDisplay()
                 end
                 return
@@ -551,8 +571,10 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 if not gameState.result then
                     if gameState.winAmount > gameState.betAmount then
                         gameState.result = "win"
+                        PlaySound(SOUNDS.WIN)
                     else
                         gameState.result = "push"
+                        PlaySound(SOUNDS.PUSH)
                     end
                 end
                 gameState.phase = "finished"
@@ -564,6 +586,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             if string.find(msg, playerName .. " loses") then
                 gameState.result = "lose"
                 gameState.phase = "finished"
+                PlaySound(SOUNDS.LOSE)
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -704,4 +727,4 @@ SlashCmdList["BLACKJACKPLAYER"] = function(msg)
     BlackJackPlayer:Toggle()
 end
 
-print("|cFFFFD700[BlackJack Player]|r Loaded")
+print("|cFFFFD700[BlackJack Player]|r Loaded.")
