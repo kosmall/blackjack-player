@@ -2,13 +2,13 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.5.0"
+BlackJackPlayer.version = "1.5.1"
 
 -- Default saved variables
 local defaults = {
     minimapPos = 180,
-    enableAnimations = true,
-    enableConfetti = true,
+    enableAnimations = false,
+    enableConfetti = false,
 }
 
 -- Card names mapping

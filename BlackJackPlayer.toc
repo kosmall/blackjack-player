@@ -2,7 +2,7 @@
 ## Title: BlackJack Player
 ## Notes: Player addon for BlackJack casino games. Displays cards and provides Hit/Pass buttons. Requires a dealer running the BlackJack addon.
 ## Author: Gorllami - Spiteshatter
-## Version: 1.5.0
+## Version: 1.5.1
 ## SavedVariables: BlackJackPlayerDB
 ## X-Category: Minigames
 ## X-Website: https://legacy.curseforge.com/wow/addons/blackjackplayer
