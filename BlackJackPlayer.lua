@@ -2,11 +2,13 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.4.0"
+BlackJackPlayer.version = "1.5.0"
 
 -- Default saved variables
 local defaults = {
     minimapPos = 180,
+    enableAnimations = true,
+    enableConfetti = true,
 }
 
 -- Card names mapping
@@ -51,6 +53,8 @@ local gameState = {
     phase = "waiting", -- waiting, dealing, playerTurn, dealerTurn, finished
     currentPlayer = nil,  -- Name of the player currently being served by dealer
     isMyGame = false,  -- Whether the current game is mine
+    lastPlayerCardCount = 0,  -- Track number of cards shown for animations
+    lastDealerCardCount = 0,  -- Track number of cards shown for animations
 }
 
 -- Calculate hand value
@@ -93,6 +97,8 @@ local function ResetGame()
         phase = "waiting",
         currentPlayer = nil,
         isMyGame = false,
+        lastPlayerCardCount = 0,
+        lastDealerCardCount = 0,
     }
     BlackJackPlayer:UpdateDisplay()
 end
@@ -205,6 +211,23 @@ local function CreateCardFrame(parent, index)
     text:SetTextColor(0, 0, 0, 1)
     card.text = text
 
+    -- Animation group for flip effect
+    card.animGroup = card:CreateAnimationGroup()
+
+    -- Scale down (first half of flip)
+    local scale1 = card.animGroup:CreateAnimation("Scale")
+    scale1:SetDuration(0.15)
+    scale1:SetScale(0.1, 1.0)
+    scale1:SetOrigin("CENTER", 0, 0)
+    scale1:SetOrder(1)
+
+    -- Scale up (second half of flip)
+    local scale2 = card.animGroup:CreateAnimation("Scale")
+    scale2:SetDuration(0.15)
+    scale2:SetScale(10, 1.0)
+    scale2:SetOrigin("CENTER", 0, 0)
+    scale2:SetOrder(2)
+
     card:Hide()
     return card
 end
@@ -227,6 +250,108 @@ local function ShowHiddenCard(frame)
     frame.text:SetText("?")
     frame.text:SetTextColor(1, 1, 1, 1)
     frame:Show()
+end
+
+-- Show card with flip animation
+local function ShowCardWithFlip(frame, cardValue)
+    if not BlackJackPlayerDB.enableAnimations then
+        -- No animation, just show
+        frame:SetBackdropColor(1, 1, 1, 1)
+        frame.text:SetText(cardSymbols[cardValue])
+        frame.text:SetTextColor(0, 0, 0, 1)
+        frame:Show()
+        return
+    end
+
+    -- Start with card hidden (back side)
+    frame:SetBackdropColor(0.2, 0.2, 0.6, 1)
+    frame.text:SetText("?")
+    frame.text:SetTextColor(1, 1, 1, 1)
+    frame:Show()
+
+    -- After half the animation, change to front
+    C_Timer.After(0.15, function()
+        frame:SetBackdropColor(1, 1, 1, 1)
+        frame.text:SetText(cardSymbols[cardValue])
+        frame.text:SetTextColor(0, 0, 0, 1)
+    end)
+
+    -- Play flip animation
+    frame.animGroup:Play()
+end
+
+-- Confetti particle system for blackjack wins
+local confettiParticles = {}
+
+local function CreateConfettiParticle(parent, x, y)
+    local particle = parent:CreateTexture(nil, "OVERLAY")
+    particle:SetSize(8, 8)
+    particle:SetTexture("Interface\\Buttons\\WHITE8x8")
+
+    -- Random gold/yellow color
+    local colorVariant = math.random()
+    if colorVariant < 0.33 then
+        particle:SetVertexColor(1, 0.84, 0) -- Gold
+    elseif colorVariant < 0.66 then
+        particle:SetVertexColor(1, 1, 0) -- Yellow
+    else
+        particle:SetVertexColor(1, 0.65, 0) -- Orange
+    end
+
+    particle:SetPoint("CENTER", parent, "BOTTOMLEFT", x, y)
+
+    return particle
+end
+
+local function ShowConfetti()
+    if not BlackJackPlayerDB.enableConfetti then
+        return
+    end
+
+    -- Clear old particles
+    for _, p in ipairs(confettiParticles) do
+        p:Hide()
+    end
+    confettiParticles = {}
+
+    -- Create particles
+    local numParticles = 30
+    for i = 1, numParticles do
+        local startX = math.random(50, 270)
+        local startY = 480 + math.random(0, 50)
+        local particle = CreateConfettiParticle(mainFrame, startX, startY)
+        table.insert(confettiParticles, particle)
+
+        -- Animate particle falling
+        local duration = 2.0 + math.random() * 1.0
+        local endY = -50
+        local deltaX = math.random(-80, 80)
+
+        particle:Show()
+        particle:SetAlpha(1)
+
+        -- Animation using timer
+        local startTime = GetTime()
+        local frame = CreateFrame("Frame")
+        frame:SetScript("OnUpdate", function(self)
+            local elapsed = GetTime() - startTime
+            local progress = elapsed / duration
+
+            if progress >= 1 then
+                particle:Hide()
+                self:SetScript("OnUpdate", nil)
+                return
+            end
+
+            -- Ease out quad
+            local easeProgress = 1 - (1 - progress) * (1 - progress)
+            local currentY = startY + (endY - startY) * easeProgress
+            local currentX = startX + deltaX * math.sin(progress * math.pi * 3)
+
+            particle:SetPoint("CENTER", mainFrame, "BOTTOMLEFT", currentX, currentY)
+            particle:SetAlpha(1 - progress)
+        end)
+    end
 end
 
 -- Hit button
@@ -286,20 +411,35 @@ passBtn:SetScript("OnClick", function()
 end)
 
 -- Update card display
-local function UpdateCards(cards, cardFrames, showHidden)
+local function UpdateCards(cards, cardFrames, showHidden, isPlayer)
+    local lastCount = isPlayer and gameState.lastPlayerCardCount or gameState.lastDealerCardCount
+
     for i, frame in ipairs(cardFrames) do
         if i == 2 and showHidden and #cards >= 1 then
             -- Show hidden card for dealer's second card
             ShowHiddenCard(frame)
         elseif cards[i] then
             local cardValue = cards[i]
-            frame:SetBackdropColor(1, 1, 1, 1)
-            frame.text:SetText(cardSymbols[cardValue])
-            frame.text:SetTextColor(0, 0, 0, 1)
-            frame:Show()
+            -- Use flip animation for new cards only
+            if i > lastCount and BlackJackPlayerDB.enableAnimations then
+                ShowCardWithFlip(frame, cardValue)
+            else
+                -- Card already shown, just update without animation
+                frame:SetBackdropColor(1, 1, 1, 1)
+                frame.text:SetText(cardSymbols[cardValue])
+                frame.text:SetTextColor(0, 0, 0, 1)
+                frame:Show()
+            end
         else
             frame:Hide()
         end
+    end
+
+    -- Update last count
+    if isPlayer then
+        gameState.lastPlayerCardCount = #cards
+    else
+        gameState.lastDealerCardCount = #cards
     end
 end
 
@@ -375,8 +515,8 @@ function BlackJackPlayer:UpdateDisplay()
 
     -- Update cards - dealer's second card hidden during player turn
     local hideSecondCard = gameState.myTurn or (not gameState.result and #gameState.dealerCards == 1)
-    UpdateCards(gameState.dealerCards, dealerCardFrames, hideSecondCard)
-    UpdateCards(gameState.myCards, playerCardFrames, false)
+    UpdateCards(gameState.dealerCards, dealerCardFrames, hideSecondCard, false)
+    UpdateCards(gameState.myCards, playerCardFrames, false, true)
 
     -- Update values
     if #gameState.dealerCards > 0 then
@@ -568,6 +708,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 gameState.phase = "finished"
                 PlaySoundFile(VOICE_SOUNDS.BLACKJACK, "Master")
                 DoEmote("train")
+                ShowConfetti()
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -590,6 +731,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                         gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
                         PlaySoundFile(VOICE_SOUNDS.BLACKJACK, "Master")
                         DoEmote("train")
+                        ShowConfetti()
                     else
                         gameState.result = "win"
                         gameState.winAmount = gameState.betAmount * 2
