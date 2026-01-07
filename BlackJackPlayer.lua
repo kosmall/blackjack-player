@@ -2,11 +2,11 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.3.0"
+BlackJackPlayer.version = "1.4.0"
 
 -- Default saved variables
 local defaults = {
-    minimapPos = 45,
+    minimapPos = 180,
 }
 
 -- Card names mapping
@@ -49,6 +49,8 @@ local gameState = {
     winAmount = 0,
     dealerName = nil,  -- Name of the dealer
     phase = "waiting", -- waiting, dealing, playerTurn, dealerTurn, finished
+    currentPlayer = nil,  -- Name of the player currently being served by dealer
+    isMyGame = false,  -- Whether the current game is mine
 }
 
 -- Calculate hand value
@@ -89,6 +91,8 @@ local function ResetGame()
         winAmount = 0,
         dealerName = nil,
         phase = "waiting",
+        currentPlayer = nil,
+        isMyGame = false,
     }
     BlackJackPlayer:UpdateDisplay()
 end
@@ -130,9 +134,14 @@ local statusText = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 statusText:SetPoint("TOP", title, "BOTTOM", 0, -10)
 statusText:SetText("|cFF888888Waiting for game...|r")
 
+-- Current player info text (shown when someone else is playing)
+local currentPlayerText = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+currentPlayerText:SetPoint("TOP", statusText, "BOTTOM", 0, -5)
+currentPlayerText:SetText("")
+
 -- Bet display
 local betText = mainFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-betText:SetPoint("TOP", statusText, "BOTTOM", 0, -5)
+betText:SetPoint("TOP", currentPlayerText, "BOTTOM", 0, -5)
 betText:SetText("")
 
 -- Dealer section
@@ -226,7 +235,7 @@ hitBtn:SetSize(80, 35)
 hitBtn:SetPoint("BOTTOMLEFT", mainFrame, "BOTTOMLEFT", 15, 25)
 hitBtn:SetText("HIT")
 hitBtn:SetScript("OnClick", function()
-    if gameState.active and gameState.myTurn then
+    if gameState.active and gameState.myTurn and gameState.isMyGame then
         SendChatMessage("hit", "PARTY")
     end
 end)
@@ -271,7 +280,7 @@ passBtn:SetSize(80, 35)
 passBtn:SetPoint("BOTTOMRIGHT", mainFrame, "BOTTOMRIGHT", -15, 25)
 passBtn:SetText("PASS")
 passBtn:SetScript("OnClick", function()
-    if gameState.active and gameState.myTurn then
+    if gameState.active and gameState.myTurn and gameState.isMyGame then
         SendChatMessage("pass", "PARTY")
     end
 end)
@@ -298,6 +307,7 @@ end
 function BlackJackPlayer:UpdateDisplay()
     if not gameState.active then
         statusText:SetText("|cFF888888Waiting for game...|r")
+        currentPlayerText:SetText("")
         betText:SetText("")
         dealerValueText:SetText("")
         playerValueText:SetText("")
@@ -311,6 +321,13 @@ function BlackJackPlayer:UpdateDisplay()
         hitBtn:Disable()
         passBtn:Disable()
         return
+    end
+
+    -- Show current player info if game is active but not mine
+    if gameState.currentPlayer and not gameState.isMyGame then
+        currentPlayerText:SetText("|cFFFFAA00Dealer playing with: " .. gameState.currentPlayer .. "|r")
+    else
+        currentPlayerText:SetText("")
     end
 
     -- Show bet
@@ -338,13 +355,19 @@ function BlackJackPlayer:UpdateDisplay()
         end
         hitBtn:Disable()
         passBtn:Disable()
-    elseif gameState.myTurn then
+    elseif gameState.myTurn and gameState.isMyGame then
+        -- Only enable buttons if it's my turn AND my game
         statusText:SetText("|cFF00FF00Your turn - Hit or Pass|r")
         resultText:SetText("")
         hitBtn:Enable()
         passBtn:Enable()
     else
-        statusText:SetText("|cFFFFFF00Waiting...|r")
+        -- Waiting or not my game
+        if not gameState.isMyGame then
+            statusText:SetText("|cFFFFFF00Watching...|r")
+        else
+            statusText:SetText("|cFFFFFF00Waiting...|r")
+        end
         resultText:SetText("")
         hitBtn:Disable()
         passBtn:Disable()
@@ -426,16 +449,33 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
         -- Parse [BJ] messages from dealer
         if string.find(msg, "^%[BJ%]") then
-            -- Game started for me
+            -- Game started - check if it's for me or someone else
             local startPlayer, bet = string.match(msg, "%[BJ%] Game started! (.+) bet (%d+)g")
-            if startPlayer and startPlayer == playerName then
-                ResetGame()
-                gameState.active = true
-                gameState.betAmount = tonumber(bet)
-                gameState.dealerName = sender
-                gameState.phase = "dealing"
-                if not mainFrame:IsShown() then
-                    mainFrame:Show()
+            if startPlayer then
+                -- A game has started
+                local isMyGame = (startPlayer == playerName)
+
+                if isMyGame then
+                    -- Game is for me - reset and setup
+                    ResetGame()
+                    gameState.active = true
+                    gameState.betAmount = tonumber(bet)
+                    gameState.dealerName = sender
+                    gameState.phase = "dealing"
+                    gameState.currentPlayer = startPlayer
+                    gameState.isMyGame = true
+                    if not mainFrame:IsShown() then
+                        mainFrame:Show()
+                    end
+                else
+                    -- Game is for someone else - just track who is playing
+                    if not gameState.active or gameState.phase == "finished" then
+                        ResetGame()
+                    end
+                    gameState.active = true
+                    gameState.currentPlayer = startPlayer
+                    gameState.isMyGame = false
+                    gameState.dealerName = sender
                 end
                 BlackJackPlayer:UpdateDisplay()
                 return
@@ -446,7 +486,8 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             local drawPlayer, cardName = string.match(msg, "%[BJ%] (.+) draws: (%w+)")
             if drawPlayer and cardName then
                 local cardValue = ParseCard(cardName)
-                if cardValue and gameState.active then
+                if cardValue and gameState.active and gameState.isMyGame then
+                    -- Only process cards if this is my game
                     if drawPlayer == playerName then
                         -- My card
                         table.insert(gameState.myCards, cardValue)
@@ -466,7 +507,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
             -- My turn to act
             local turnPlayer = string.match(msg, "%[BJ%] (.+), type 'hit' or 'pass'")
-            if turnPlayer and turnPlayer == playerName then
+            if turnPlayer and turnPlayer == playerName and gameState.isMyGame then
                 gameState.phase = "playerTurn"
                 gameState.myTurn = true
                 PlaySound(SOUNDS.YOUR_TURN)
@@ -476,7 +517,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
             -- I said hit
             local hitPlayer = string.match(msg, "%[BJ%] (.+) says HIT!")
-            if hitPlayer and hitPlayer == playerName then
+            if hitPlayer and hitPlayer == playerName and gameState.isMyGame then
                 -- Stay in playerTurn, wait for next roll
                 gameState.myTurn = false
                 BlackJackPlayer:UpdateDisplay()
@@ -485,7 +526,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
             -- I stand
             local standPlayer = string.match(msg, "%[BJ%] (.+) STANDS with")
-            if standPlayer and standPlayer == playerName then
+            if standPlayer and standPlayer == playerName and gameState.isMyGame then
                 gameState.phase = "dealerTurn"
                 gameState.myTurn = false
                 BlackJackPlayer:UpdateDisplay()
@@ -493,7 +534,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             end
 
             -- Dealer's turn message
-            if string.find(msg, "Dealer's turn") then
+            if string.find(msg, "Dealer's turn") and gameState.isMyGame then
                 gameState.phase = "dealerTurn"
                 gameState.myTurn = false
                 BlackJackPlayer:UpdateDisplay()
@@ -502,7 +543,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
             -- I have blackjack
             local bjPlayer = string.match(msg, "%[BJ%] (.+) has BLACKJACK!")
-            if bjPlayer and bjPlayer == playerName then
+            if bjPlayer and bjPlayer == playerName and gameState.isMyGame then
                 gameState.phase = "dealerTurn"
                 gameState.myTurn = false
                 BlackJackPlayer:UpdateDisplay()
@@ -511,7 +552,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
             -- I bust
             local bustPlayer = string.match(msg, "%[BJ%] (.+) BUSTS with")
-            if bustPlayer and bustPlayer == playerName then
+            if bustPlayer and bustPlayer == playerName and gameState.isMyGame then
                 gameState.result = "bust"
                 gameState.phase = "finished"
                 gameState.myTurn = false
@@ -521,17 +562,18 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             end
 
             -- Player wins with blackjack
-            if string.find(msg, playerName .. " wins with BLACKJACK") then
+            if string.find(msg, playerName .. " wins with BLACKJACK") and gameState.isMyGame then
                 gameState.result = "blackjack"
                 gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
                 gameState.phase = "finished"
                 PlaySoundFile(VOICE_SOUNDS.BLACKJACK, "Master")
+                DoEmote("train")
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
 
             -- Player wins
-            if string.find(msg, playerName .. " wins") and not string.find(msg, "BLACKJACK") then
+            if string.find(msg, playerName .. " wins") and not string.find(msg, "BLACKJACK") and gameState.isMyGame then
                 gameState.result = "win"
                 gameState.winAmount = gameState.betAmount * 2
                 gameState.phase = "finished"
@@ -541,12 +583,13 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             end
 
             -- Dealer busts, I win
-            if string.find(msg, "Dealer BUSTS") and gameState.active then
+            if string.find(msg, "Dealer BUSTS") and gameState.active and gameState.isMyGame then
                 if not gameState.result then
                     if gameState.myValue == 21 and #gameState.myCards == 2 then
                         gameState.result = "blackjack"
                         gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
                         PlaySoundFile(VOICE_SOUNDS.BLACKJACK, "Master")
+                        DoEmote("train")
                     else
                         gameState.result = "win"
                         gameState.winAmount = gameState.betAmount * 2
@@ -559,7 +602,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             end
 
             -- Push
-            if string.find(msg, "Push") and string.find(msg, playerName) then
+            if string.find(msg, "Push") and string.find(msg, playerName) and gameState.isMyGame then
                 gameState.result = "push"
                 gameState.phase = "finished"
                 PlaySound(SOUNDS.PUSH)
@@ -568,7 +611,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             end
 
             -- Dealer wins
-            if string.find(msg, "Dealer wins") or string.find(msg, "Dealer has BLACKJACK") then
+            if (string.find(msg, "Dealer wins") or string.find(msg, "Dealer has BLACKJACK")) and gameState.isMyGame then
                 if gameState.active and not gameState.result then
                     gameState.result = "lose"
                     gameState.phase = "finished"
@@ -580,7 +623,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 
             -- Pay message (game end confirmation)
             local payPlayer, payAmount = string.match(msg, "%[BJ%] Pay (.+): (%d+)g")
-            if payPlayer and payPlayer == playerName then
+            if payPlayer and payPlayer == playerName and gameState.isMyGame then
                 gameState.winAmount = tonumber(payAmount)
                 if not gameState.result then
                     if gameState.winAmount > gameState.betAmount then
@@ -597,7 +640,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             end
 
             -- I lose message
-            if string.find(msg, playerName .. " loses") then
+            if string.find(msg, playerName .. " loses") and gameState.isMyGame then
                 gameState.result = "lose"
                 gameState.phase = "finished"
                 PlaySound(SOUNDS.LOSE)
