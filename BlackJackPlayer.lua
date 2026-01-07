@@ -2,7 +2,7 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.5.1"
+BlackJackPlayer.version = "1.5.2"
 
 -- Default saved variables
 local defaults = {
@@ -254,7 +254,7 @@ end
 
 -- Show card with flip animation
 local function ShowCardWithFlip(frame, cardValue)
-    if not BlackJackPlayerDB.enableAnimations then
+    if not (BlackJackPlayerDB and BlackJackPlayerDB.enableAnimations) then
         -- No animation, just show
         frame:SetBackdropColor(1, 1, 1, 1)
         frame.text:SetText(cardSymbols[cardValue])
@@ -304,7 +304,7 @@ local function CreateConfettiParticle(parent, x, y)
 end
 
 local function ShowConfetti()
-    if not BlackJackPlayerDB.enableConfetti then
+    if not (BlackJackPlayerDB and BlackJackPlayerDB.enableConfetti) then
         return
     end
 
@@ -421,7 +421,7 @@ local function UpdateCards(cards, cardFrames, showHidden, isPlayer)
         elseif cards[i] then
             local cardValue = cards[i]
             -- Use flip animation for new cards only
-            if i > lastCount and BlackJackPlayerDB.enableAnimations then
+            if i > lastCount and BlackJackPlayerDB and BlackJackPlayerDB.enableAnimations then
                 ShowCardWithFlip(frame, cardValue)
             else
                 -- Card already shown, just update without animation
