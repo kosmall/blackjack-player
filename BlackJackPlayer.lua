@@ -2,13 +2,11 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.5.2"
+BlackJackPlayer.version = "1.7.0"
 
 -- Default saved variables
 local defaults = {
     minimapPos = 180,
-    enableAnimations = false,
-    enableConfetti = false,
 }
 
 -- Card names mapping
@@ -53,8 +51,9 @@ local gameState = {
     phase = "waiting", -- waiting, dealing, playerTurn, dealerTurn, finished
     currentPlayer = nil,  -- Name of the player currently being served by dealer
     isMyGame = false,  -- Whether the current game is mine
-    lastPlayerCardCount = 0,  -- Track number of cards shown for animations
-    lastDealerCardCount = 0,  -- Track number of cards shown for animations
+    -- Spectator mode: track other player's cards
+    watchedPlayerCards = {},
+    watchedPlayerValue = 0,
 }
 
 -- Calculate hand value
@@ -97,8 +96,9 @@ local function ResetGame()
         phase = "waiting",
         currentPlayer = nil,
         isMyGame = false,
-        lastPlayerCardCount = 0,
-        lastDealerCardCount = 0,
+        -- Spectator mode
+        watchedPlayerCards = {},
+        watchedPlayerValue = 0,
     }
     BlackJackPlayer:UpdateDisplay()
 end
@@ -211,23 +211,6 @@ local function CreateCardFrame(parent, index)
     text:SetTextColor(0, 0, 0, 1)
     card.text = text
 
-    -- Animation group for flip effect
-    card.animGroup = card:CreateAnimationGroup()
-
-    -- Scale down (first half of flip)
-    local scale1 = card.animGroup:CreateAnimation("Scale")
-    scale1:SetDuration(0.15)
-    scale1:SetScale(0.1, 1.0)
-    scale1:SetOrigin("CENTER", 0, 0)
-    scale1:SetOrder(1)
-
-    -- Scale up (second half of flip)
-    local scale2 = card.animGroup:CreateAnimation("Scale")
-    scale2:SetDuration(0.15)
-    scale2:SetScale(10, 1.0)
-    scale2:SetOrigin("CENTER", 0, 0)
-    scale2:SetOrder(2)
-
     card:Hide()
     return card
 end
@@ -252,106 +235,12 @@ local function ShowHiddenCard(frame)
     frame:Show()
 end
 
--- Show card with flip animation
-local function ShowCardWithFlip(frame, cardValue)
-    if not (BlackJackPlayerDB and BlackJackPlayerDB.enableAnimations) then
-        -- No animation, just show
-        frame:SetBackdropColor(1, 1, 1, 1)
-        frame.text:SetText(cardSymbols[cardValue])
-        frame.text:SetTextColor(0, 0, 0, 1)
-        frame:Show()
-        return
-    end
-
-    -- Start with card hidden (back side)
-    frame:SetBackdropColor(0.2, 0.2, 0.6, 1)
-    frame.text:SetText("?")
-    frame.text:SetTextColor(1, 1, 1, 1)
+-- Show card (simple, no animation)
+local function ShowCard(frame, cardValue)
+    frame:SetBackdropColor(1, 1, 1, 1)
+    frame.text:SetText(cardSymbols[cardValue])
+    frame.text:SetTextColor(0, 0, 0, 1)
     frame:Show()
-
-    -- After half the animation, change to front
-    C_Timer.After(0.15, function()
-        frame:SetBackdropColor(1, 1, 1, 1)
-        frame.text:SetText(cardSymbols[cardValue])
-        frame.text:SetTextColor(0, 0, 0, 1)
-    end)
-
-    -- Play flip animation
-    frame.animGroup:Play()
-end
-
--- Confetti particle system for blackjack wins
-local confettiParticles = {}
-
-local function CreateConfettiParticle(parent, x, y)
-    local particle = parent:CreateTexture(nil, "OVERLAY")
-    particle:SetSize(8, 8)
-    particle:SetTexture("Interface\\Buttons\\WHITE8x8")
-
-    -- Random gold/yellow color
-    local colorVariant = math.random()
-    if colorVariant < 0.33 then
-        particle:SetVertexColor(1, 0.84, 0) -- Gold
-    elseif colorVariant < 0.66 then
-        particle:SetVertexColor(1, 1, 0) -- Yellow
-    else
-        particle:SetVertexColor(1, 0.65, 0) -- Orange
-    end
-
-    particle:SetPoint("CENTER", parent, "BOTTOMLEFT", x, y)
-
-    return particle
-end
-
-local function ShowConfetti()
-    if not (BlackJackPlayerDB and BlackJackPlayerDB.enableConfetti) then
-        return
-    end
-
-    -- Clear old particles
-    for _, p in ipairs(confettiParticles) do
-        p:Hide()
-    end
-    confettiParticles = {}
-
-    -- Create particles
-    local numParticles = 30
-    for i = 1, numParticles do
-        local startX = math.random(50, 270)
-        local startY = 480 + math.random(0, 50)
-        local particle = CreateConfettiParticle(mainFrame, startX, startY)
-        table.insert(confettiParticles, particle)
-
-        -- Animate particle falling
-        local duration = 2.0 + math.random() * 1.0
-        local endY = -50
-        local deltaX = math.random(-80, 80)
-
-        particle:Show()
-        particle:SetAlpha(1)
-
-        -- Animation using timer
-        local startTime = GetTime()
-        local frame = CreateFrame("Frame")
-        frame:SetScript("OnUpdate", function(self)
-            local elapsed = GetTime() - startTime
-            local progress = elapsed / duration
-
-            if progress >= 1 then
-                particle:Hide()
-                self:SetScript("OnUpdate", nil)
-                return
-            end
-
-            -- Ease out quad
-            local easeProgress = 1 - (1 - progress) * (1 - progress)
-            local currentY = startY + (endY - startY) * easeProgress
-            local currentX = startX + deltaX * math.sin(progress * math.pi * 3)
-
-            particle:SetPoint("CENTER", mainFrame, "BOTTOMLEFT", currentX, currentY)
-            particle:SetAlpha(1 - progress)
-        end)
-    end
 end
 
 -- Hit button
@@ -411,35 +300,16 @@ passBtn:SetScript("OnClick", function()
 end)
 
 -- Update card display
-local function UpdateCards(cards, cardFrames, showHidden, isPlayer)
-    local lastCount = isPlayer and gameState.lastPlayerCardCount or gameState.lastDealerCardCount
-
+local function UpdateCards(cards, cardFrames, showHidden)
     for i, frame in ipairs(cardFrames) do
         if i == 2 and showHidden and #cards >= 1 then
             -- Show hidden card for dealer's second card
             ShowHiddenCard(frame)
         elseif cards[i] then
-            local cardValue = cards[i]
-            -- Use flip animation for new cards only
-            if i > lastCount and BlackJackPlayerDB and BlackJackPlayerDB.enableAnimations then
-                ShowCardWithFlip(frame, cardValue)
-            else
-                -- Card already shown, just update without animation
-                frame:SetBackdropColor(1, 1, 1, 1)
-                frame.text:SetText(cardSymbols[cardValue])
-                frame.text:SetTextColor(0, 0, 0, 1)
-                frame:Show()
-            end
+            ShowCard(frame, cards[i])
         else
             frame:Hide()
         end
-    end
-
-    -- Update last count
-    if isPlayer then
-        gameState.lastPlayerCardCount = #cards
-    else
-        gameState.lastDealerCardCount = #cards
     end
 end
 
@@ -513,10 +383,26 @@ function BlackJackPlayer:UpdateDisplay()
         passBtn:Disable()
     end
 
+    -- Determine which cards to show (mine or watched player's)
+    local playerCards, playerValue
+    if gameState.isMyGame then
+        playerCards = gameState.myCards
+        playerValue = gameState.myValue
+        playerLabel:SetText("|cFF00FF00Your Cards:|r")
+    else
+        playerCards = gameState.watchedPlayerCards
+        playerValue = gameState.watchedPlayerValue
+        if gameState.currentPlayer then
+            playerLabel:SetText("|cFF00FF00" .. gameState.currentPlayer .. "'s Cards:|r")
+        else
+            playerLabel:SetText("|cFF00FF00Player's Cards:|r")
+        end
+    end
+
     -- Update cards - dealer's second card hidden during player turn
-    local hideSecondCard = gameState.myTurn or (not gameState.result and #gameState.dealerCards == 1)
-    UpdateCards(gameState.dealerCards, dealerCardFrames, hideSecondCard, false)
-    UpdateCards(gameState.myCards, playerCardFrames, false, true)
+    local hideSecondCard = (not gameState.result and #gameState.dealerCards == 1)
+    UpdateCards(gameState.dealerCards, dealerCardFrames, hideSecondCard)
+    UpdateCards(playerCards, playerCardFrames, false)
 
     -- Update values
     if #gameState.dealerCards > 0 then
@@ -537,8 +423,8 @@ function BlackJackPlayer:UpdateDisplay()
         dealerValueText:SetText("")
     end
 
-    if #gameState.myCards > 0 then
-        playerValueText:SetText("Value: " .. gameState.myValue)
+    if #playerCards > 0 then
+        playerValueText:SetText("Value: " .. playerValue)
     else
         playerValueText:SetText("")
     end
@@ -608,14 +494,14 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                         mainFrame:Show()
                     end
                 else
-                    -- Game is for someone else - just track who is playing
-                    if not gameState.active or gameState.phase == "finished" then
-                        ResetGame()
-                    end
+                    -- Game is for someone else - reset and track who is playing
+                    ResetGame()
                     gameState.active = true
                     gameState.currentPlayer = startPlayer
                     gameState.isMyGame = false
                     gameState.dealerName = sender
+                    gameState.betAmount = tonumber(bet)
+                    gameState.phase = "dealing"
                 end
                 BlackJackPlayer:UpdateDisplay()
                 return
@@ -626,20 +512,37 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             local drawPlayer, cardName = string.match(msg, "%[BJ%] (.+) draws: (%w+)")
             if drawPlayer and cardName then
                 local cardValue = ParseCard(cardName)
-                if cardValue and gameState.active and gameState.isMyGame then
-                    -- Only process cards if this is my game
-                    if drawPlayer == playerName then
-                        -- My card
-                        table.insert(gameState.myCards, cardValue)
-                        gameState.myValue = CalculateHandValue(gameState.myCards)
-                        PlaySound(SOUNDS.NEW_CARD)
-                        BlackJackPlayer:UpdateDisplay()
-                    elseif drawPlayer == "Dealer" then
-                        -- Dealer's card
-                        table.insert(gameState.dealerCards, cardValue)
-                        gameState.dealerValue = CalculateHandValue(gameState.dealerCards)
-                        PlaySound(SOUNDS.NEW_CARD)
-                        BlackJackPlayer:UpdateDisplay()
+                if cardValue and gameState.active then
+                    if gameState.isMyGame then
+                        -- My game: process my cards and dealer cards
+                        if drawPlayer == playerName then
+                            -- My card
+                            table.insert(gameState.myCards, cardValue)
+                            gameState.myValue = CalculateHandValue(gameState.myCards)
+                            PlaySound(SOUNDS.NEW_CARD)
+                            BlackJackPlayer:UpdateDisplay()
+                        elseif drawPlayer == "Dealer" then
+                            -- Dealer's card
+                            table.insert(gameState.dealerCards, cardValue)
+                            gameState.dealerValue = CalculateHandValue(gameState.dealerCards)
+                            PlaySound(SOUNDS.NEW_CARD)
+                            BlackJackPlayer:UpdateDisplay()
+                        end
+                    else
+                        -- Spectator mode: track other player's cards
+                        if drawPlayer == gameState.currentPlayer then
+                            -- Watched player's card
+                            table.insert(gameState.watchedPlayerCards, cardValue)
+                            gameState.watchedPlayerValue = CalculateHandValue(gameState.watchedPlayerCards)
+                            PlaySound(SOUNDS.NEW_CARD)
+                            BlackJackPlayer:UpdateDisplay()
+                        elseif drawPlayer == "Dealer" then
+                            -- Dealer's card
+                            table.insert(gameState.dealerCards, cardValue)
+                            gameState.dealerValue = CalculateHandValue(gameState.dealerCards)
+                            PlaySound(SOUNDS.NEW_CARD)
+                            BlackJackPlayer:UpdateDisplay()
+                        end
                     end
                 end
                 return
@@ -664,40 +567,58 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 return
             end
 
-            -- I stand
+            -- Player stands
             local standPlayer = string.match(msg, "%[BJ%] (.+) STANDS with")
-            if standPlayer and standPlayer == playerName and gameState.isMyGame then
-                gameState.phase = "dealerTurn"
-                gameState.myTurn = false
-                BlackJackPlayer:UpdateDisplay()
+            if standPlayer then
+                if standPlayer == playerName and gameState.isMyGame then
+                    gameState.phase = "dealerTurn"
+                    gameState.myTurn = false
+                    BlackJackPlayer:UpdateDisplay()
+                elseif standPlayer == gameState.currentPlayer and not gameState.isMyGame then
+                    -- Spectator: watched player stands
+                    gameState.phase = "dealerTurn"
+                    BlackJackPlayer:UpdateDisplay()
+                end
                 return
             end
 
             -- Dealer's turn message
-            if string.find(msg, "Dealer's turn") and gameState.isMyGame then
+            if string.find(msg, "Dealer's turn") and gameState.active then
                 gameState.phase = "dealerTurn"
                 gameState.myTurn = false
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
 
-            -- I have blackjack
+            -- Player has blackjack
             local bjPlayer = string.match(msg, "%[BJ%] (.+) has BLACKJACK!")
-            if bjPlayer and bjPlayer == playerName and gameState.isMyGame then
-                gameState.phase = "dealerTurn"
-                gameState.myTurn = false
-                BlackJackPlayer:UpdateDisplay()
+            if bjPlayer then
+                if bjPlayer == playerName and gameState.isMyGame then
+                    gameState.phase = "dealerTurn"
+                    gameState.myTurn = false
+                    BlackJackPlayer:UpdateDisplay()
+                elseif bjPlayer == gameState.currentPlayer and not gameState.isMyGame then
+                    -- Spectator: watched player has blackjack
+                    gameState.phase = "dealerTurn"
+                    BlackJackPlayer:UpdateDisplay()
+                end
                 return
             end
 
-            -- I bust
+            -- Player bust
             local bustPlayer = string.match(msg, "%[BJ%] (.+) BUSTS with")
-            if bustPlayer and bustPlayer == playerName and gameState.isMyGame then
-                gameState.result = "bust"
-                gameState.phase = "finished"
-                gameState.myTurn = false
-                PlaySound(SOUNDS.LOSE)
-                BlackJackPlayer:UpdateDisplay()
+            if bustPlayer then
+                if bustPlayer == playerName and gameState.isMyGame then
+                    gameState.result = "bust"
+                    gameState.phase = "finished"
+                    gameState.myTurn = false
+                    PlaySound(SOUNDS.LOSE)
+                    BlackJackPlayer:UpdateDisplay()
+                elseif bustPlayer == gameState.currentPlayer and not gameState.isMyGame then
+                    -- Spectator: watched player busts
+                    gameState.phase = "finished"
+                    BlackJackPlayer:UpdateDisplay()
+                end
                 return
             end
 
@@ -707,8 +628,6 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
                 gameState.phase = "finished"
                 PlaySoundFile(VOICE_SOUNDS.BLACKJACK, "Master")
-                DoEmote("train")
-                ShowConfetti()
                 BlackJackPlayer:UpdateDisplay()
                 return
             end
@@ -723,20 +642,24 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 return
             end
 
-            -- Dealer busts, I win
-            if string.find(msg, "Dealer BUSTS") and gameState.active and gameState.isMyGame then
-                if not gameState.result then
-                    if gameState.myValue == 21 and #gameState.myCards == 2 then
-                        gameState.result = "blackjack"
-                        gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
-                        PlaySoundFile(VOICE_SOUNDS.BLACKJACK, "Master")
-                        DoEmote("train")
-                        ShowConfetti()
-                    else
-                        gameState.result = "win"
-                        gameState.winAmount = gameState.betAmount * 2
-                        PlaySoundFile(VOICE_SOUNDS.WIN, "Master")
+            -- Dealer busts
+            if string.find(msg, "Dealer BUSTS") and gameState.active then
+                if gameState.isMyGame then
+                    if not gameState.result then
+                        if gameState.myValue == 21 and #gameState.myCards == 2 then
+                            gameState.result = "blackjack"
+                            gameState.winAmount = gameState.betAmount + math.floor(gameState.betAmount * 1.5)
+                            PlaySoundFile(VOICE_SOUNDS.BLACKJACK, "Master")
+                        else
+                            gameState.result = "win"
+                            gameState.winAmount = gameState.betAmount * 2
+                            PlaySoundFile(VOICE_SOUNDS.WIN, "Master")
+                        end
+                        gameState.phase = "finished"
+                        BlackJackPlayer:UpdateDisplay()
                     end
+                else
+                    -- Spectator: dealer busts
                     gameState.phase = "finished"
                     BlackJackPlayer:UpdateDisplay()
                 end
@@ -753,11 +676,17 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             end
 
             -- Dealer wins
-            if (string.find(msg, "Dealer wins") or string.find(msg, "Dealer has BLACKJACK")) and gameState.isMyGame then
-                if gameState.active and not gameState.result then
-                    gameState.result = "lose"
+            if (string.find(msg, "Dealer wins") or string.find(msg, "Dealer has BLACKJACK")) and gameState.active then
+                if gameState.isMyGame then
+                    if not gameState.result then
+                        gameState.result = "lose"
+                        gameState.phase = "finished"
+                        PlaySound(SOUNDS.LOSE)
+                        BlackJackPlayer:UpdateDisplay()
+                    end
+                else
+                    -- Spectator: dealer wins
                     gameState.phase = "finished"
-                    PlaySound(SOUNDS.LOSE)
                     BlackJackPlayer:UpdateDisplay()
                 end
                 return
