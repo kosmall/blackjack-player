@@ -2,7 +2,7 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.7.0"
+BlackJackPlayer.version = "1.8.0"
 
 -- Default saved variables
 local defaults = {
@@ -773,22 +773,28 @@ function BlackJackPlayer:IsVisible()
     return mainFrame:IsShown()
 end
 
--- Minimap Button
+-- Minimap Button (TBC compatible)
 local minimapButton = CreateFrame("Button", "BlackJackPlayerMinimapButton", Minimap)
-minimapButton:SetSize(32, 32)
+minimapButton:SetSize(31, 31)
 minimapButton:SetFrameStrata("MEDIUM")
 minimapButton:SetFrameLevel(8)
-minimapButton:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+minimapButton:EnableMouse(true)
+minimapButton:SetMovable(true)
 
+-- Icon texture (using Darkmoon Faire card icon - available in TBC)
 local icon = minimapButton:CreateTexture(nil, "ARTWORK")
 icon:SetSize(20, 20)
-icon:SetPoint("TOPLEFT", minimapButton, "TOPLEFT", 6, -6)
-icon:SetTexture("Interface\\Icons\\INV_Misc_Dice_02")
+icon:SetPoint("TOPLEFT", 7, -6)
+icon:SetTexture("Interface\\Icons\\INV_Misc_Ticket_Tarot_Stack_01")
 
+-- Border overlay
 local border = minimapButton:CreateTexture(nil, "OVERLAY")
 border:SetSize(53, 53)
-border:SetPoint("TOPLEFT", minimapButton, "TOPLEFT", 0, 0)
+border:SetPoint("TOPLEFT")
 border:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+
+-- Highlight texture
+minimapButton:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
 local function UpdateMinimapButtonPosition()
     local angle = math.rad(BlackJackPlayerDB and BlackJackPlayerDB.minimapPos or 45)
