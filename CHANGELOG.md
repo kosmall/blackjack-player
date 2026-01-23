@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.9.2] - 2026-01-23
+
+### Fixed
+- Restored GitHub Actions workflow for CurseForge releases
+
 ## [1.9.1] - 2026-01-23
 
 ### Fixed
