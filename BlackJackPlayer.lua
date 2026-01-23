@@ -2,7 +2,7 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.8.0"
+BlackJackPlayer.version = "1.9.1"
 
 -- Default saved variables
 local defaults = {
