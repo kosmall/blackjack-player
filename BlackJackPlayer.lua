@@ -2,7 +2,7 @@
 -- For players joining BlackJack casino games
 
 BlackJackPlayer = {}
-BlackJackPlayer.version = "1.9.2"
+BlackJackPlayer.version = "1.9.3"
 
 -- Default saved variables
 local defaults = {
@@ -268,14 +268,29 @@ tradeBtn:SetText("TRADE")
 local function UpdateTradeButtonTarget()
     if gameState.dealerName and not InCombatLockdown() then
         tradeBtn:SetAttribute("type", "macro")
-        tradeBtn:SetAttribute("macrotext", "/target " .. gameState.dealerName .. "\n/run InitiateTrade('target')")
+        tradeBtn:SetAttribute("macrotext", "/target " .. gameState.dealerName)
     end
 end
 
--- Hook to initiate trade after targeting
+-- Hook to initiate trade after targeting (with small delay to let target happen first)
 tradeBtn:HookScript("OnClick", function()
-    if gameState.dealerName and UnitName("target") == gameState.dealerName then
-        InitiateTrade("target")
+    if gameState.dealerName then
+        -- Small delay to allow the secure macro to target first
+        C_Timer.After(0.05, function()
+            if UnitName("target") == gameState.dealerName then
+                InitiateTrade("target")
+            else
+                -- If targeting failed, try by name directly
+                TargetByName(gameState.dealerName, true)
+                C_Timer.After(0.05, function()
+                    if UnitName("target") == gameState.dealerName then
+                        InitiateTrade("target")
+                    else
+                        print("|cFFFFD700[BJPlayer]|r Could not target dealer: " .. gameState.dealerName)
+                    end
+                end)
+            end
+        end)
     end
 end)
 

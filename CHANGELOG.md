@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.3] - 2026-01-25
+
+### Fixed
+- Trade button now properly targets the dealer before initiating trade
+- Added fallback targeting if initial target fails
+- Trade button no longer requires dealer to be pre-selected
+
 ## [1.9.2] - 2026-01-23
 
 ### Fixed
